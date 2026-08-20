@@ -162,12 +162,14 @@ export function MapView({
   const onBoundsChangeRef = useRef(onBoundsChange);
   const onSelectPlaceRef = useRef(onSelectPlace);
   const onErrorRef = useRef(onError);
+  const placesRef = useRef(places);
 
   useEffect(() => {
     onBoundsChangeRef.current = onBoundsChange;
     onSelectPlaceRef.current = onSelectPlace;
     onErrorRef.current = onError;
-  }, [onBoundsChange, onSelectPlace, onError]);
+    placesRef.current = places;
+  }, [onBoundsChange, onSelectPlace, onError, places]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -194,6 +196,13 @@ export function MapView({
     map.on("load", () => {
       addPlacesLayers(map);
       loadedRef.current = true;
+
+      // Paint whatever place data we already have the moment the style
+      // finishes loading — the places-sync effect below only re-fires on
+      // prop changes, so without this, data that arrived before "load"
+      // fired would never make it onto the map.
+      const placesSource = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      placesSource?.setData(placesToFeatureCollection(placesRef.current));
 
       const emitBounds = () => {
         const b = map.getBounds();
