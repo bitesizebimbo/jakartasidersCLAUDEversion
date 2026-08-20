@@ -13,6 +13,17 @@ import { JAKARTA_DEFAULT_VIEWPORT } from "@/lib/geo/jakarta";
 const SOURCE_ID = "places";
 const USER_SOURCE_ID = "user-location";
 
+// MapLibre resolves its clustering worker script relative to import.meta.url
+// inside its own module, which Next.js's bundler rewrites to point at the
+// bundled chunk rather than the original file — so the computed worker URL
+// resolves to nothing, the worker fails silently, and no GeoJSON clustering
+// (i.e. no markers) ever completes even though the map appears to load
+// fine. Pointing at the copy in public/ (see scripts/copy-maplibre-worker.mjs)
+// sidesteps that resolution entirely. Must run before any Map is created.
+if (typeof window !== "undefined") {
+  maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
+}
+
 export interface FlyToTarget {
   center: Coordinates;
   zoom: number;
