@@ -148,6 +148,31 @@ To actually show real photos, replace a place's seed data with a real, looked-up
 (via `getPlacesProvider().search()`), call `getPlaceDetails()` for it, and store
 `googlePlacePhotoUrl(details.photos[0])` as that place's `primaryImage`.
 
+**Bulk lookup + review workflow**: `scripts/lookup-google-places.ts` automates the search half of
+this for the whole seed set — it does *not* touch any source files. Run it locally with your own
+key:
+
+```bash
+# .env.local
+GOOGLE_PLACES_API_KEY=your-key-here
+```
+
+```bash
+npm run google:lookup
+```
+
+This searches Google Places for each of the 54 seed venues and writes `google-place-matches.json`
+(git-ignored — it contains real, non-fictional business data) with, for every seed place: the top
+Google match's name/address/rating/place ID, its first photo resource name if any, and a
+`confidence` label (`HIGH` / `MEDIUM` / `LOW` / `NO_MATCH`) from a crude name-overlap heuristic.
+**Treat every match as a suggestion, not a verdict** — go look at the actual Google Maps listing
+for anything you plan to use. Many seed entries are fully fictional and won't have a real
+counterpart; some "matches" will be a same-named but unrelated business. For each match you've
+personally confirmed is correct, copy its `matchGooglePlaceId` and `matchPhotoName` into that
+entry's `googlePlaceId` / `googlePhotoName` fields in `data/seed/placeSeeds.ts` — the generator
+(`data/seed/generate.ts`) picks those up automatically and the place will render its real photo
+and link to its real Google Maps page.
+
 ## Social / TikTok intelligence (mock mode)
 
 There is currently no compliant, ToS-safe real-time TikTok data source wired up, and the app

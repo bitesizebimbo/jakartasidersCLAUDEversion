@@ -28,6 +28,16 @@ export interface PlaceSeed {
   baseRating: number;
   baseReviewCount: number;
   tags: string[];
+  /**
+   * Optional overrides once a seed entry has been matched to a real,
+   * verified Google Places listing (see scripts/lookup-google-places.ts).
+   * Left unset, the place keeps its fabricated googlePlaceId and
+   * generated placeholder art — never populate these from a fuzzy/
+   * unreviewed match.
+   */
+  googlePlaceId?: string;
+  /** Google Places photo resource name, e.g. "places/{id}/photos/{photoId}". */
+  googlePhotoName?: string;
 }
 
 export const placeSeeds: PlaceSeed[] = [

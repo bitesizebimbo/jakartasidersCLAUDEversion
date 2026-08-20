@@ -8,6 +8,7 @@ import { jitterCoordinates, NEIGHBORHOOD_CENTERS } from "@/lib/geo/jakarta";
 import { pick, randomFloat, randomInt, seededRandom } from "@/lib/utils/prng";
 import { slugify } from "@/lib/utils/format";
 import { CUISINE_SLUGS } from "@/types/place";
+import { googlePlacePhotoUrl } from "@/lib/google/photoUrl";
 import { placeSeeds, type PlaceSeed } from "./placeSeeds";
 import { MENTION_VOLUME_PROFILES, GEM_SIGNAL_PROFILES } from "./archetypeProfiles";
 import { CAPTION_TEMPLATES, CREATOR_HANDLES } from "./socialContent";
@@ -195,7 +196,7 @@ function buildSeedData(): BuiltSeedData {
 
     places.push({
       id: placeId,
-      googlePlaceId: `mock-${placeId}`,
+      googlePlaceId: seed.googlePlaceId ?? `mock-${placeId}`,
       name: seed.name,
       slug,
       description: seed.description,
@@ -207,10 +208,12 @@ function buildSeedData(): BuiltSeedData {
       priceLevel: seed.priceLevel as PriceLevel,
       googleRating: seed.baseRating,
       googleReviewCount: seed.baseReviewCount,
-      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        `${seed.name} ${seed.address}`
-      )}`,
-      primaryImage: null,
+      googleMapsUrl: seed.googlePlaceId
+        ? `https://www.google.com/maps/place/?q=place_id:${seed.googlePlaceId}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            `${seed.name} ${seed.address}`
+          )}`,
+      primaryImage: seed.googlePhotoName ? googlePlacePhotoUrl(seed.googlePhotoName) : null,
       cuisines: seed.cuisines,
       tags: seed.tags,
       openingHours: seed.openingHours,

@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local-only reports (real business data pulled from Google — never commit)
+google-place-matches.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
