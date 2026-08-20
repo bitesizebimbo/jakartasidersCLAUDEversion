@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import type { BoundingBox, Coordinates } from "@/types/geo";
 import type { NeighborhoodSlug, PlaceWithDistance } from "@/types/place";
@@ -13,7 +13,6 @@ import { NeighborhoodSelector } from "@/components/filters/NeighborhoodSelector"
 import { FilterSheet } from "@/components/filters/FilterSheet";
 import { PlaceBottomSheet } from "@/components/place/PlaceBottomSheet";
 import { IconButton } from "@/components/ui/IconButton";
-import { isMapboxConfigured } from "@/lib/maps/mapboxConfig";
 import { JAKARTA_BOUNDS, JAKARTA_DEFAULT_VIEWPORT, NEIGHBORHOOD_CENTERS } from "@/lib/geo/jakarta";
 import { usePlaces } from "@/hooks/usePlaces";
 import { useGeolocation } from "@/hooks/useGeolocation";
@@ -27,7 +26,7 @@ export function MapExperience({
   initialPlaces: PlaceWithDistance[];
   initialNeighborhood?: NeighborhoodSlug | null;
 }) {
-  const mapboxConfigured = useMemo(() => isMapboxConfigured(), []);
+  const [mapFailed, setMapFailed] = useState(false);
   const [bounds, setBounds] = useState<BoundingBox | null>(JAKARTA_BOUNDS);
   const [filters, setFilters] = useState<PlaceFilters>({
     ...DEFAULT_FILTERS,
@@ -78,11 +77,12 @@ export function MapExperience({
 
   return (
     <div className="relative h-full w-full">
-      {mapboxConfigured ? (
+      {!mapFailed ? (
         <MapView
           places={visiblePlaces}
           onSelectPlace={handleSelectFromMap}
           onBoundsChange={setBounds}
+          onError={() => setMapFailed(true)}
           userLocation={userLocation}
           flyTo={flyTo}
           className="h-full w-full"
@@ -115,7 +115,7 @@ export function MapExperience({
         </div>
       </div>
 
-      {mapboxConfigured && (
+      {!mapFailed && (
         <MapControls onLocate={handleLocate} onRecenter={handleRecenter} locationStatus={geolocation.status} />
       )}
 

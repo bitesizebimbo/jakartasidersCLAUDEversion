@@ -5,11 +5,10 @@ import type { PlaceWithDistance } from "@/types/place";
 import { MapView, type FlyToTarget } from "@/components/map/MapView";
 import { MapUnavailable } from "@/components/map/MapUnavailable";
 import { PlaceBottomSheet } from "@/components/place/PlaceBottomSheet";
-import { isMapboxConfigured } from "@/lib/maps/mapboxConfig";
 import { useGeolocation } from "@/hooks/useGeolocation";
 
 export function SavedMapView({ places }: { places: PlaceWithDistance[] }) {
-  const mapboxConfigured = isMapboxConfigured();
+  const [mapFailed, setMapFailed] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<PlaceWithDistance | null>(null);
   const { coordinates } = useGeolocation();
 
@@ -21,7 +20,7 @@ export function SavedMapView({ places }: { places: PlaceWithDistance[] }) {
     return { center: { lat: avgLat, lng: avgLng }, zoom: 12.5, token };
   }, [places]);
 
-  if (!mapboxConfigured) {
+  if (mapFailed) {
     return <MapUnavailable places={places} />;
   }
 
@@ -34,6 +33,7 @@ export function SavedMapView({ places }: { places: PlaceWithDistance[] }) {
           if (place) setSelectedPlace(place);
         }}
         onBoundsChange={() => {}}
+        onError={() => setMapFailed(true)}
         userLocation={coordinates}
         flyTo={flyTo}
         className="h-full w-full"

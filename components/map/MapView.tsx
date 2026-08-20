@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { Coordinates } from "@/types/geo";
 import type { BoundingBox } from "@/types/geo";
 import type { PlaceWithDistance } from "@/types/place";
-import { getMapboxToken, MAP_STYLE_URL, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM } from "@/lib/maps/mapboxConfig";
+import { MAP_STYLE, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM } from "@/lib/maps/mapConfig";
 import { placesToFeatureCollection } from "@/lib/maps/placesToGeoJSON";
 import { JAKARTA_DEFAULT_VIEWPORT } from "@/lib/geo/jakarta";
 
@@ -24,12 +24,13 @@ export interface MapViewProps {
   places: PlaceWithDistance[];
   onSelectPlace: (placeId: string) => void;
   onBoundsChange: (bounds: BoundingBox) => void;
+  onError?: () => void;
   userLocation: Coordinates | null;
   flyTo: FlyToTarget | null;
   className?: string;
 }
 
-function addPlacesLayers(map: mapboxgl.Map) {
+function addPlacesLayers(map: maplibregl.Map) {
   map.addSource(SOURCE_ID, {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
@@ -59,7 +60,7 @@ function addPlacesLayers(map: mapboxgl.Map) {
     filter: ["has", "point_count"],
     layout: {
       "text-field": ["get", "point_count_abbreviated"],
-      "text-font": ["DIN Pro Medium", "Arial Unicode MS Bold"],
+      "text-font": ["Noto Sans Regular"],
       "text-size": 12,
     },
     paint: { "text-color": "#ffffff" },
@@ -149,38 +150,46 @@ export function MapView({
   places,
   onSelectPlace,
   onBoundsChange,
+  onError,
   userLocation,
   flyTo,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBoundsChangeRef = useRef(onBoundsChange);
   const onSelectPlaceRef = useRef(onSelectPlace);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onBoundsChangeRef.current = onBoundsChange;
     onSelectPlaceRef.current = onSelectPlace;
-  }, [onBoundsChange, onSelectPlace]);
+    onErrorRef.current = onError;
+  }, [onBoundsChange, onSelectPlace, onError]);
 
   useEffect(() => {
-    const token = getMapboxToken();
-    if (!token || !containerRef.current) return;
+    if (!containerRef.current) return;
 
-    mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAP_STYLE_URL,
+      style: MAP_STYLE,
       center: [JAKARTA_DEFAULT_VIEWPORT.center.lng, JAKARTA_DEFAULT_VIEWPORT.center.lat],
       zoom: JAKARTA_DEFAULT_VIEWPORT.zoom,
       attributionControl: false,
     });
     mapRef.current = map;
 
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+    // Only treat pre-load failures (e.g. the basemap/tiles are unreachable)
+    // as fatal — individual post-load tile errors shouldn't tear down a
+    // working map.
+    map.on("error", () => {
+      if (!loadedRef.current) onErrorRef.current?.();
+    });
 
     map.on("load", () => {
       addPlacesLayers(map);
@@ -210,7 +219,7 @@ export function MapView({
         map.on("mouseleave", layerId, () => {
           map.getCanvas().style.cursor = "";
         });
-        map.on("click", layerId, (e) => {
+        map.on("click", layerId, (e: maplibregl.MapLayerMouseEvent) => {
           const feature = e.features?.[0];
           const id = feature?.properties?.id as string | undefined;
           if (!id) return;
@@ -220,13 +229,12 @@ export function MapView({
         });
       }
 
-      map.on("click", "clusters", (e) => {
+      map.on("click", "clusters", (e: maplibregl.MapLayerMouseEvent) => {
         const feature = e.features?.[0];
         const clusterId = feature?.properties?.cluster_id;
-        const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
         if (clusterId === undefined) return;
-        source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-          if (err || zoom == null) return;
+        source.getClusterExpansionZoom(clusterId).then((zoom: number) => {
           const coords = (feature!.geometry as GeoJSON.Point).coordinates as [number, number];
           map.easeTo({ center: coords, zoom, duration: 500 });
         });
@@ -250,14 +258,14 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     source?.setData(placesToFeatureCollection(places));
   }, [places]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const source = map.getSource(USER_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    const source = map.getSource(USER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
     source.setData({
       type: "FeatureCollection",
@@ -280,5 +288,13 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyTo?.token]);
 
-  return <div ref={containerRef} className={className} aria-label="Jakarta places map" role="application" />;
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ filter: "grayscale(0.15) contrast(1.02)" }}
+      aria-label="Jakarta places map"
+      role="application"
+    />
+  );
 }

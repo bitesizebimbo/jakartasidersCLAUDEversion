@@ -15,7 +15,8 @@ Jakarta only for V1.
 - **TypeScript**, strict mode
 - **Tailwind CSS v4**
 - **Supabase** (Postgres, Auth, RLS) — optional, the app runs fully on seed data without it
-- **Mapbox GL JS** — optional, falls back to a neighborhood-grouped list without a token
+- **MapLibre GL JS** — free, keyless CARTO/OpenStreetMap basemap, falls back to a
+  neighborhood-grouped list only if the map genuinely fails to load
 - **Zod** for input validation
 - **TanStack Query** for client data fetching/caching
 - **Lucide** icons
@@ -75,7 +76,7 @@ degrades gracefully when its variables are missing:
 
 | Feature | Env vars | Without it |
 | --- | --- | --- |
-| Interactive map | `NEXT_PUBLIC_MAPBOX_TOKEN` | Falls back to a neighborhood-grouped list view |
+| Interactive map | _(none)_ | Always on — free keyless basemap. Falls back to a neighborhood-grouped list only if the map fails to load at runtime |
 | Sign-in / saved / collections | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Save/collections show a "not configured" state; browsing still works |
 | Place catalog persistence | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (seeding only) | Reads/writes use the in-memory seed dataset (`services/places/MockPlaceRepository`) |
 | Google Places enrichment | `GOOGLE_PLACES_API_KEY` | `services/google` falls back to a seed-backed mock provider |
@@ -110,12 +111,20 @@ degrades gracefully when its variables are missing:
 Once configured, `services/places` automatically switches from the mock repository to
 `SupabasePlaceRepository` — no code changes needed.
 
-## Map provider setup (optional)
+## Map provider
 
-Create a Mapbox account, generate a public access token, and set `NEXT_PUBLIC_MAPBOX_TOKEN`.
-The token is safe to expose to the client (restrict it by URL in the Mapbox dashboard for
-production). Marker clustering uses Mapbox's native GeoJSON clustering rather than per-marker
-React components, so panning/zooming stays cheap even with hundreds of points.
+The map runs on **MapLibre GL JS** — an open-source, API-compatible fork of Mapbox GL JS —
+against a free CARTO Positron basemap (built on OpenStreetMap data). No account, signup, or API
+token is required anywhere, in any environment. Marker clustering uses the map engine's native
+GeoJSON clustering rather than per-marker React components, so panning/zooming stays cheap even
+with hundreds of points.
+
+If you'd rather use Mapbox's own vector styles (nicer typography, more customization) or
+MapTiler, swap the `style` passed to `maplibregl.Map` in `components/map/MapView.tsx` for a
+`mapbox://...` or MapTiler style URL and gate it behind an env var, following the same pattern
+`services/google` uses for the optional Google Places provider. Nothing else in the app needs to
+change — `MapView` already reports load failures via `onError`, so a bad/missing token there
+would just fall back to the list view instead of breaking.
 
 ## Google Places setup (optional)
 

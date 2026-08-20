@@ -4,9 +4,9 @@ import { PlaceCard } from "@/components/places/PlaceCard";
 import { titleCase } from "@/lib/utils/format";
 
 /**
- * Graceful fallback when no Mapbox token is configured — the discovery
- * experience keeps working as a neighborhood-grouped list instead of a
- * blank screen.
+ * Graceful fallback when the interactive map fails to load (e.g. the
+ * basemap tiles are unreachable) — the discovery experience keeps working
+ * as a neighborhood-grouped list instead of a blank screen.
  */
 export function MapUnavailable({ places }: { places: PlaceWithDistance[] }) {
   const byNeighborhood = new Map<string, PlaceWithDistance[]>();
@@ -23,8 +23,7 @@ export function MapUnavailable({ places }: { places: PlaceWithDistance[] }) {
         <div>
           <p className="text-sm font-semibold">Live map unavailable</p>
           <p className="font-mono text-[11px] text-grey-500">
-            Add NEXT_PUBLIC_MAPBOX_TOKEN to enable the interactive map. Browsing by list still
-            works.
+            The interactive map couldn&apos;t load right now. Browsing by list still works.
           </p>
         </div>
       </div>
