@@ -60,7 +60,13 @@ export default async function PlaceDetailPage({
   return (
     <main className="min-h-0 flex-1 overflow-y-auto pb-8">
       <div className="relative">
-        <PlaceImage placeType={place.placeType} className="h-56 w-full" iconSize={40} />
+        <PlaceImage
+          placeType={place.placeType}
+          src={place.primaryImage}
+          alt={place.name}
+          className="h-56 w-full"
+          iconSize={40}
+        />
         <div className="absolute left-4 top-4">
           <ClassificationBadge classification={place.classification} />
         </div>

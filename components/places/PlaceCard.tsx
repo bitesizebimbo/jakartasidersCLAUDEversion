@@ -23,7 +23,12 @@ export function PlaceCard({
       )}
     >
       <div className="relative">
-        <PlaceImage placeType={place.placeType} className="h-32 w-full" />
+        <PlaceImage
+          placeType={place.placeType}
+          src={place.primaryImage}
+          alt={place.name}
+          className="h-32 w-full"
+        />
         <ClassificationBadge
           classification={place.classification}
           size="sm"

@@ -134,6 +134,20 @@ and set `GOOGLE_PLACES_API_KEY`. This is used for future place lookup/enrichment
 app's own catalog (map, search, filters, explore) is served by `services/places`, not this
 provider.
 
+**Photos**: `getPlaceDetails()` also returns `photos` — official photography from a business's
+own Google Maps listing, as an array of Places photo resource names. `app/api/places/photo/route.ts`
+proxies the actual image bytes server-side (the API key never reaches the client), and
+`lib/google/photoUrl.ts` builds the same-origin URL for it. `components/places/PlaceImage`
+already renders `place.primaryImage` as a real photo when set, falling back to generated
+placeholder art otherwise.
+
+This plumbing is fully wired but intentionally unused by the seed dataset: every seeded place has
+a fabricated `googlePlaceId` (not a real, verified one), so pulling real Google photography onto
+fabricated ratings/reviews/scores would misattribute a real business's imagery to invented data.
+To actually show real photos, replace a place's seed data with a real, looked-up Google Place ID
+(via `getPlacesProvider().search()`), call `getPlaceDetails()` for it, and store
+`googlePlacePhotoUrl(details.photos[0])` as that place's `primaryImage`.
+
 ## Social / TikTok intelligence (mock mode)
 
 There is currently no compliant, ToS-safe real-time TikTok data source wired up, and the app

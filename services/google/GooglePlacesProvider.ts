@@ -63,7 +63,7 @@ export class GooglePlacesProvider implements PlacesProvider {
       headers: {
         "X-Goog-Api-Key": this.apiKey,
         "X-Goog-FieldMask":
-          "id,displayName,location,formattedAddress,rating,userRatingCount,regularOpeningHours,googleMapsUri,priceLevel,primaryType",
+          "id,displayName,location,formattedAddress,rating,userRatingCount,regularOpeningHours,googleMapsUri,priceLevel,primaryType,photos",
       },
     });
 
@@ -83,6 +83,7 @@ export class GooglePlacesProvider implements PlacesProvider {
       googleMapsUri?: string;
       priceLevel?: string;
       primaryType?: string;
+      photos?: Array<{ name: string }>;
     };
 
     return {
@@ -100,6 +101,7 @@ export class GooglePlacesProvider implements PlacesProvider {
       googleMapsUrl: p.googleMapsUri ?? `https://www.google.com/maps/place/?q=place_id:${p.id}`,
       priceLevel: p.priceLevel ? PRICE_LEVEL_MAP[p.priceLevel] ?? null : null,
       category: p.primaryType ?? null,
+      photos: p.photos?.map((photo) => photo.name) ?? [],
     };
   }
 }

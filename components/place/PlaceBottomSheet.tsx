@@ -59,7 +59,12 @@ export function PlaceBottomSheet({
       {place && (
         <div className="flex flex-col">
           <div className="relative">
-            <PlaceImage placeType={place.placeType} className="h-36 w-full" />
+            <PlaceImage
+              placeType={place.placeType}
+              src={place.primaryImage}
+              alt={place.name}
+              className="h-36 w-full"
+            />
             <div className="absolute right-3 top-3">
               <SaveButton placeId={place.id} redirectTo={`/place/${place.slug}`} />
             </div>

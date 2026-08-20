@@ -41,6 +41,7 @@ export class MockPlacesProvider implements PlacesProvider {
       googleMapsUrl: place.googleMapsUrl,
       priceLevel: place.priceLevel,
       category: place.placeType,
+      photos: [],
     };
   }
 }

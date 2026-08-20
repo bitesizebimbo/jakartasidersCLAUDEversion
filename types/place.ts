@@ -141,4 +141,11 @@ export interface ExternalPlaceDetails {
   googleMapsUrl: string;
   priceLevel: PriceLevel | null;
   category: string | null;
+  /**
+   * Google Places photo resource names (e.g. "places/{id}/photos/{photoId}"),
+   * official photography sourced from the business's own Google Maps
+   * listing. Resolve one into a usable URL with lib/google/photoUrl.ts —
+   * never call the Places Photo media endpoint directly from the client.
+   */
+  photos: string[];
 }
