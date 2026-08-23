@@ -1,28 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import * as maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { MarkerClusterer, type Renderer } from "@googlemaps/markerclusterer";
 import type { Coordinates } from "@/types/geo";
 import type { BoundingBox } from "@/types/geo";
 import type { PlaceWithDistance } from "@/types/place";
-import { MAP_STYLE, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM } from "@/lib/maps/mapConfig";
-import { placesToFeatureCollection } from "@/lib/maps/placesToGeoJSON";
+import { getGoogleMapsApiKey, MAP_STYLE } from "@/lib/maps/googleMapsConfig";
+import { clusterMarkerIcon, placeMarkerIcon, userLocationIcon } from "@/lib/maps/markerIcons";
 import { JAKARTA_DEFAULT_VIEWPORT } from "@/lib/geo/jakarta";
-
-const SOURCE_ID = "places";
-const USER_SOURCE_ID = "user-location";
-
-// MapLibre resolves its clustering worker script relative to import.meta.url
-// inside its own module, which Next.js's bundler rewrites to point at the
-// bundled chunk rather than the original file — so the computed worker URL
-// resolves to nothing, the worker fails silently, and no GeoJSON clustering
-// (i.e. no markers) ever completes even though the map appears to load
-// fine. Pointing at the copy in public/ (see scripts/copy-maplibre-worker.mjs)
-// sidesteps that resolution entirely. Must run before any Map is created.
-if (typeof window !== "undefined") {
-  maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
-}
 
 export interface FlyToTarget {
   center: Coordinates;
@@ -41,121 +27,18 @@ export interface MapViewProps {
   className?: string;
 }
 
-function addPlacesLayers(map: maplibregl.Map) {
-  map.addSource(SOURCE_ID, {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-    cluster: true,
-    clusterRadius: CLUSTER_RADIUS,
-    clusterMaxZoom: CLUSTER_MAX_ZOOM,
-  });
+let optionsSet = false;
 
-  map.addLayer({
-    id: "clusters",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["has", "point_count"],
-    paint: {
-      "circle-color": "#0a0a0a",
-      "circle-opacity": 0.88,
-      "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 30, 26],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-
-  map.addLayer({
-    id: "cluster-count",
-    type: "symbol",
-    source: SOURCE_ID,
-    filter: ["has", "point_count"],
-    layout: {
-      "text-field": ["get", "point_count_abbreviated"],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 12,
-    },
-    paint: { "text-color": "#ffffff" },
-  });
-
-  // Halo behind viral points for a restrained "pulse" emphasis.
-  map.addLayer({
-    id: "viral-halo",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "classification"], "VIRAL"]],
-    paint: {
-      "circle-radius": 17,
-      "circle-color": "#ff3b2f",
-      "circle-opacity": 0.16,
-    },
-  });
-
-  map.addLayer({
-    id: "unclustered-watchlist",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "classification"], "WATCHLIST"]],
-    paint: {
-      "circle-radius": 4,
-      "circle-color": "#a3a099",
-      "circle-opacity": 0.6,
-    },
-  });
-
-  map.addLayer({
-    id: "unclustered-gem",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "classification"], "HIDDEN_GEM"]],
-    paint: {
-      "circle-radius": 8,
-      "circle-color": "#ffffff",
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#0a0a0a",
-    },
-  });
-
-  map.addLayer({
-    id: "unclustered-viral",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "classification"], "VIRAL"]],
-    paint: {
-      "circle-radius": 9,
-      "circle-color": "#ff3b2f",
-      "circle-stroke-width": 1.5,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-
-  map.addSource(USER_SOURCE_ID, {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "user-location-ring",
-    type: "circle",
-    source: USER_SOURCE_ID,
-    paint: {
-      "circle-radius": 10,
-      "circle-color": "#0a0a0a",
-      "circle-opacity": 0.12,
-    },
-  });
-
-  map.addLayer({
-    id: "user-location-dot",
-    type: "circle",
-    source: USER_SOURCE_ID,
-    paint: {
-      "circle-radius": 5,
-      "circle-color": "#0a0a0a",
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-}
+const clusterRenderer: Renderer = {
+  render({ count, position }) {
+    return new google.maps.Marker({
+      position,
+      icon: clusterMarkerIcon(count),
+      label: { text: String(count), color: "#ffffff", fontSize: "12px", fontWeight: "600" },
+      zIndex: 1000 + count,
+    });
+  },
+};
 
 export function MapView({
   places,
@@ -167,9 +50,11 @@ export function MapView({
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const clustererRef = useRef<MarkerClusterer | null>(null);
+  const markersByIdRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const loadedRef = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBoundsChangeRef = useRef(onBoundsChange);
   const onSelectPlaceRef = useRef(onSelectPlace);
   const onErrorRef = useRef(onError);
@@ -182,94 +67,98 @@ export function MapView({
     placesRef.current = places;
   }, [onBoundsChange, onSelectPlace, onError, places]);
 
+  function syncMarkers(map: google.maps.Map, list: PlaceWithDistance[]) {
+    const clusterer = clustererRef.current;
+    if (!clusterer) return;
+
+    const existing = markersByIdRef.current;
+    const nextIds = new Set(list.map((p) => p.id));
+
+    const toRemove: google.maps.Marker[] = [];
+    for (const [id, marker] of existing) {
+      if (!nextIds.has(id)) {
+        toRemove.push(marker);
+        existing.delete(id);
+      }
+    }
+    if (toRemove.length) clusterer.removeMarkers(toRemove, true);
+
+    const toAdd: google.maps.Marker[] = [];
+    for (const place of list) {
+      if (existing.has(place.id)) continue;
+      const marker = new google.maps.Marker({
+        position: { lat: place.coordinates.lat, lng: place.coordinates.lng },
+        icon: placeMarkerIcon(place.classification),
+      });
+      marker.addListener("click", () => {
+        onSelectPlaceRef.current(place.id);
+        map.panTo(marker.getPosition()!);
+        if (map.getZoom()! < 15) map.setZoom(15);
+      });
+      existing.set(place.id, marker);
+      toAdd.push(marker);
+    }
+    if (toAdd.length) clusterer.addMarkers(toAdd, true);
+
+    clusterer.render();
+  }
+
   useEffect(() => {
     if (!containerRef.current) return;
+    const markersById = markersByIdRef.current;
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      center: [JAKARTA_DEFAULT_VIEWPORT.center.lng, JAKARTA_DEFAULT_VIEWPORT.center.lat],
-      zoom: JAKARTA_DEFAULT_VIEWPORT.zoom,
-      attributionControl: false,
-    });
-    mapRef.current = map;
+    const apiKey = getGoogleMapsApiKey();
+    if (!apiKey) {
+      onErrorRef.current?.();
+      return;
+    }
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+    let cancelled = false;
+    if (!optionsSet) {
+      setOptions({ key: apiKey, v: "weekly" });
+      optionsSet = true;
+    }
 
-    // Only treat pre-load failures (e.g. the basemap/tiles are unreachable)
-    // as fatal — individual post-load tile errors shouldn't tear down a
-    // working map.
-    map.on("error", () => {
-      if (!loadedRef.current) onErrorRef.current?.();
-    });
+    importLibrary("maps")
+      .then(async () => {
+        await importLibrary("marker");
+        if (cancelled || !containerRef.current) return;
 
-    map.on("load", () => {
-      addPlacesLayers(map);
-      loadedRef.current = true;
-
-      // Paint whatever place data we already have the moment the style
-      // finishes loading — the places-sync effect below only re-fires on
-      // prop changes, so without this, data that arrived before "load"
-      // fired would never make it onto the map.
-      const placesSource = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      placesSource?.setData(placesToFeatureCollection(placesRef.current));
-
-      const emitBounds = () => {
-        const b = map.getBounds();
-        if (!b) return;
-        onBoundsChangeRef.current({
-          north: b.getNorth(),
-          south: b.getSouth(),
-          east: b.getEast(),
-          west: b.getWest(),
+        const map = new google.maps.Map(containerRef.current, {
+          center: { lat: JAKARTA_DEFAULT_VIEWPORT.center.lat, lng: JAKARTA_DEFAULT_VIEWPORT.center.lng },
+          zoom: JAKARTA_DEFAULT_VIEWPORT.zoom,
+          styles: MAP_STYLE,
+          disableDefaultUI: true,
+          zoomControl: true,
+          gestureHandling: "greedy",
         });
-      };
+        mapRef.current = map;
+        loadedRef.current = true;
 
-      map.on("moveend", () => {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(emitBounds, 250);
+        clustererRef.current = new MarkerClusterer({ map, renderer: clusterRenderer });
+        syncMarkers(map, placesRef.current);
+
+        const emitBounds = () => {
+          const b = map.getBounds();
+          if (!b) return;
+          const ne = b.getNorthEast();
+          const sw = b.getSouthWest();
+          onBoundsChangeRef.current({ north: ne.lat(), south: sw.lat(), east: ne.lng(), west: sw.lng() });
+        };
+        map.addListener("idle", emitBounds);
+        emitBounds();
+      })
+      .catch(() => {
+        if (!cancelled) onErrorRef.current?.();
       });
-      emitBounds();
-
-      for (const layerId of ["unclustered-viral", "unclustered-gem", "unclustered-watchlist"]) {
-        map.on("mouseenter", layerId, () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", layerId, () => {
-          map.getCanvas().style.cursor = "";
-        });
-        map.on("click", layerId, (e: maplibregl.MapLayerMouseEvent) => {
-          const feature = e.features?.[0];
-          const id = feature?.properties?.id as string | undefined;
-          if (!id) return;
-          onSelectPlaceRef.current(id);
-          const coords = (feature!.geometry as GeoJSON.Point).coordinates as [number, number];
-          map.easeTo({ center: coords, zoom: Math.max(map.getZoom(), 15), duration: 500 });
-        });
-      }
-
-      map.on("click", "clusters", (e: maplibregl.MapLayerMouseEvent) => {
-        const feature = e.features?.[0];
-        const clusterId = feature?.properties?.cluster_id;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (clusterId === undefined) return;
-        source.getClusterExpansionZoom(clusterId).then((zoom: number) => {
-          const coords = (feature!.geometry as GeoJSON.Point).coordinates as [number, number];
-          map.easeTo({ center: coords, zoom, duration: 500 });
-        });
-      });
-      map.on("mouseenter", "clusters", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", "clusters", () => {
-        map.getCanvas().style.cursor = "";
-      });
-    });
 
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      map.remove();
+      cancelled = true;
+      clustererRef.current?.clearMarkers();
+      clustererRef.current = null;
+      markersById.clear();
+      userMarkerRef.current?.setMap(null);
+      userMarkerRef.current = null;
       mapRef.current = null;
       loadedRef.current = false;
     };
@@ -278,33 +167,34 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData(placesToFeatureCollection(places));
+    syncMarkers(map, places);
   }, [places]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const source = map.getSource(USER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
-    source.setData({
-      type: "FeatureCollection",
-      features: userLocation
-        ? [
-            {
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [userLocation.lng, userLocation.lat] },
-              properties: {},
-            },
-          ]
-        : [],
-    });
+
+    if (!userLocation) {
+      userMarkerRef.current?.setMap(null);
+      userMarkerRef.current = null;
+      return;
+    }
+
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = new google.maps.Marker({
+        map,
+        icon: userLocationIcon(),
+        zIndex: 999,
+      });
+    }
+    userMarkerRef.current.setPosition({ lat: userLocation.lat, lng: userLocation.lng });
   }, [userLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !flyTo) return;
-    map.flyTo({ center: [flyTo.center.lng, flyTo.center.lat], zoom: flyTo.zoom, essential: true, duration: 900 });
+    map.panTo({ lat: flyTo.center.lat, lng: flyTo.center.lng });
+    map.setZoom(flyTo.zoom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyTo?.token]);
 
@@ -312,7 +202,6 @@ export function MapView({
     <div
       ref={containerRef}
       className={className}
-      style={{ filter: "grayscale(0.15) contrast(1.02)" }}
       aria-label="Jakarta places map"
       role="application"
     />

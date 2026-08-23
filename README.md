@@ -15,8 +15,8 @@ Jakarta only for V1.
 - **TypeScript**, strict mode
 - **Tailwind CSS v4**
 - **Supabase** (Postgres, Auth, RLS) — optional, the app runs fully on seed data without it
-- **MapLibre GL JS** — free, keyless CARTO/OpenStreetMap basemap, falls back to a
-  neighborhood-grouped list only if the map genuinely fails to load
+- **Google Maps JavaScript API** — requires an API key; falls back to a neighborhood-grouped
+  list view if the key is missing or the map fails to load
 - **Zod** for input validation
 - **TanStack Query** for client data fetching/caching
 - **Lucide** icons
@@ -76,7 +76,7 @@ degrades gracefully when its variables are missing:
 
 | Feature | Env vars | Without it |
 | --- | --- | --- |
-| Interactive map | _(none)_ | Always on — free keyless basemap. Falls back to a neighborhood-grouped list only if the map fails to load at runtime |
+| Interactive map | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Falls back to a neighborhood-grouped list view |
 | Sign-in / saved / collections | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Save/collections show a "not configured" state; browsing still works |
 | Place catalog persistence | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (seeding only) | Reads/writes use the in-memory seed dataset (`services/places/MockPlaceRepository`) |
 | Google Places enrichment | `GOOGLE_PLACES_API_KEY` | `services/google` falls back to a seed-backed mock provider |
@@ -111,28 +111,40 @@ degrades gracefully when its variables are missing:
 Once configured, `services/places` automatically switches from the mock repository to
 `SupabasePlaceRepository` — no code changes needed.
 
-## Map provider
+## Map provider setup
 
-The map runs on **MapLibre GL JS** — an open-source, API-compatible fork of Mapbox GL JS —
-against a free CARTO Positron basemap (built on OpenStreetMap data). No account, signup, or API
-token is required anywhere, in any environment. Marker clustering uses the map engine's native
-GeoJSON clustering rather than per-marker React components, so panning/zooming stays cheap even
-with hundreds of points.
+The map runs on the **Google Maps JavaScript API**. It requires a Google Cloud project with
+billing enabled (Google provides a recurring monthly credit that covers moderate usage) and the
+**Maps JavaScript API** enabled.
 
-If you'd rather use Mapbox's own vector styles (nicer typography, more customization) or
-MapTiler, swap the `style` passed to `maplibregl.Map` in `components/map/MapView.tsx` for a
-`mapbox://...` or MapTiler style URL and gate it behind an env var, following the same pattern
-`services/google` uses for the optional Google Places provider. Nothing else in the app needs to
-change — `MapView` already reports load failures via `onError`, so a bad/missing token there
-would just fall back to the list view instead of breaking.
+1. In [Google Cloud Console](https://console.cloud.google.com/google/maps-apis), create/select a
+   project and enable **Maps JavaScript API**.
+2. Create an API key (APIs & Services → Credentials). For production, restrict it by **HTTP
+   referrer** to your domain(s) — it's a client-side key by nature (like a Mapbox token), safe to
+   expose, but should still be scoped.
+3. Set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to that key.
+
+Without it, `MapView` reports the failure via `onError` and the app falls back to a
+neighborhood-grouped list view (`MapUnavailable`) instead of breaking — see
+`lib/maps/googleMapsConfig.ts` for the monochrome map styling and
+`lib/maps/markerIcons.ts` for the VIRAL/GEM/WATCHLIST marker icons. Clustering uses
+[`@googlemaps/markerclusterer`](https://github.com/googlemaps/js-markerclusterer) (official
+Google library) with a custom renderer matching the design system, so panning/zooming stays cheap
+even with hundreds of points.
 
 ## Google Places setup (optional)
 
 `services/google/GooglePlacesProvider.ts` implements the `PlacesProvider` interface against the
-Places API (New). Enable the Places API in Google Cloud Console, create a server-side API key,
-and set `GOOGLE_PLACES_API_KEY`. This is used for future place lookup/enrichment flows — the
-app's own catalog (map, search, filters, explore) is served by `services/places`, not this
-provider.
+Places API (New) — a separate product from the Maps JavaScript API above, used for
+place lookup/enrichment/photos rather than rendering the map itself (the app's own catalog for
+map/search/filters/explore is served by `services/places`, not this provider). Enable **Places
+API (New)** in the same or a different Google Cloud project, create a **server-side** API key
+(no HTTP referrer restriction — this one is never sent to the browser), and set
+`GOOGLE_PLACES_API_KEY`. You can reuse the same underlying Google Maps Platform key for both
+products if you prefer fewer keys to manage, as long as both APIs are enabled on it and you
+accept that the combined key would need both a referrer restriction (for Maps JS) and server-side
+usage (for Places) — using two separate keys with tighter, purpose-specific restrictions is the
+safer default and what `.env.example` assumes.
 
 **Photos**: `getPlaceDetails()` also returns `photos` — official photography from a business's
 own Google Maps listing, as an array of Places photo resource names. `app/api/places/photo/route.ts`
